@@ -1,0 +1,1 @@
+export type FlashMessageType = 'warn' | 'success' | 'error';
