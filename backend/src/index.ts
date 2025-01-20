@@ -1,77 +1,84 @@
 import "reflect-metadata";
-import connectDB from "./Config/db";
+import connectDB from "./config/db";
 import * as dotenv from "dotenv";
-import express, { Request, Response } from "express";
-import { Logger } from "winston";
+import express, { Request, Response, NextFunction } from "express";
 import { Container } from "typedi";
 import cors from "cors";
 import { createExpressServer, useContainer } from "routing-controllers";
-
-// import { AuthController } from "./Api/Controller/auth-controller";
-import { UserController } from "./Api/Controller/user-controller";
-import { TenantController } from "./Api/Controller/tenant-controller";
-import { JobPostingController } from "./Api/Controller/jobPosting-controller";
-import { ProvidedJobRolesController } from './Api/Controller/provided-job-roles-controller';
-import { SkillDesignationController, SkillDesignationUploadController } from "./Api/Controller/skill-designation-controller"; // Added new controller
-import { JobApplicationController } from "./Api/Controller/job-application-controller";
-import { InquiryController } from "./Api/Controller/inquiry-controller";
-import { LocationController } from "./Api/Controller/location.controller";
-import { AuthController } from "./Api/Controller/auth-controller";
-import { SuperAdminController } from "./Api/Controller/middleware-test.controller";
+import { AuthController } from "./api/controllers/auth.controller";
+import morgan from 'morgan';
+import { Logger } from "./utils/logger"; // Import your custom Logger service
 
 useContainer(Container);
 
+// Load environment variables
 dotenv.config();
+
+// Connect to the database
 connectDB();
 
-Container.set(Logger, new Logger());
-
-if (!process.env.PORT || !process.env.ORIGIN_LOCAL || !process.env.ORIGIN_DEV) {
+// Exit if required environment variables are missing
+if (!process.env.PORT) {
   process.exit(1);
 }
 
+// Get the port from environment variables
 const PORT: number = parseInt(process.env.PORT, 10);
+
+// Instantiate the custom logger
+const logger = Container.get(Logger); // Get the logger instance from TypeDI container
 
 const app = express();
 
+// CORS configuration
 app.use(cors({
-  origin: [process.env.ORIGIN_LOCAL, process.env.ORIGIN_DEV],
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  origin: [process.env.ORIGIN_LOCAL!, process.env.ORIGIN_DEV!],
+  methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true,
 }));
+
+// Express server with routing-controllers
 const routingApp = createExpressServer({
   classTransformer: true,
-  controllers: [
-    TenantController,
-    JobPostingController,
-    UserController, 
-    AuthController,
-    ProvidedJobRolesController,
-    SkillDesignationUploadController, // Added new controller
-    SkillDesignationController, // Renamed controller
-    JobApplicationController,
-    InquiryController, // Added inquiry controller
-    LocationController,
-    SuperAdminController
-  ], // we specify controllers we want to use  // middlewares: [CustomErrorHandler, BeforeRequestMiddleware],
+  controllers: [AuthController],  // Add your controllers here
+  middlewares: [], // Add custom middlewares if needed
 });
 
+// Add routing-controllers to the app
 app.use(routingApp);
 
-// app.use(function (req, res, next) {
-//   res.header("Access-Control-Allow-Origin", '*');
-// })
+// Morgan configuration to log HTTP requests to winston
+const morganFormat = ":method :url :status :response-time ms";
 
-app.get('/', (_req: Request, res: Response) => {
-  return res.send('Express Typescript on Vercel')
-})
+app.use(
+  morgan(morganFormat, {
+    stream: {
+      write: (message) => {
+        const logObject = {
+          method: message.split(" ")[0],
+          url: message.split(" ")[1],
+          status: message.split(" ")[2],
+          responseTime: message.split(" ")[3],
+        };
+        logger.info(JSON.stringify(logObject)); // Log the request using winston
+      },
+    },
+  })
+);
 
-// app.get('/ping', (_req: Request, res: Response) => {
-//   return res.send('pong 🏓')
-// })
-
-
+// Middleware to parse incoming requests with large payloads
 app.use(express.json({ limit: "1024mb" }));
+
+// Error handler middleware
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  // Log error with winston
+  logger.error("Error occurred: " + err.message);
+
+  // Send a generic error response to the client
+  res.status(500).json({ message: "Internal Server Error" });
+});
+
+// Start the server
 app.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
+  logger.info(`Listening on port ${PORT}`);
 });

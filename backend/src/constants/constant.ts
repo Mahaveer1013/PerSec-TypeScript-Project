@@ -1,5 +1,4 @@
-import { configDotenv } from "dotenv"
-configDotenv();
+import dotenv from "dotenv"
+dotenv.config();
 
-export const MONGODB_URI = process.env.MONGODB_URI
-console.log(MONGODB_URI);
+export const MONGODB_URI = process.env.MONGODB_URI;
